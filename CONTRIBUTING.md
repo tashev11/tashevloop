@@ -15,4 +15,4 @@ Development:
     pip install -e .
     python -m unittest discover -s tests -p "test_*.py"
 
-By contributing, you agree that your contribution is licensed under the repository MIT License.
+By contributing, you agree that your contribution is licensed under the repository Apache License 2.0.

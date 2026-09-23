@@ -6,7 +6,7 @@
 <p align="center">
   <img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white">
   <img alt="Local first" src="https://img.shields.io/badge/local--first-no%20cloud-111827">
-  <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-16a34a">
+  <img alt="License Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-16a34a">
   <img alt="Stage alpha" src="https://img.shields.io/badge/stage-alpha-f59e0b">
 </p>
 
@@ -95,13 +95,13 @@ The local database lives inside the project at .tashevloop/memory.db and is giti
 
 ## Attribution
 
-TashevLoop is open source under the MIT License.
+TashevLoop is open source under the Apache License 2.0.
 
 Project identity:
 
 **TashevLoop by Rinat Tashev — github.com/tashev11/tashevloop**
 
-The MIT copyright/license notice must remain in copies or substantial portions of the software.
+Redistributions must follow the Apache 2.0 license and preserve the required copyright, license and NOTICE information.
 
 ## Roadmap
 
@@ -116,5 +116,5 @@ Issues and pull requests are welcome. Please read CONTRIBUTING.md.
 <p align="center">
   <strong>TashevLoop</strong><br>
   Make every AI coding cycle teach the next one.<br><br>
-  MIT © Rinat Tashev
+  Apache-2.0 © Rinat Tashev
 </p>
