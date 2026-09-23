@@ -78,6 +78,15 @@ class Store:
             rows = db.execute("SELECT * FROM events ORDER BY id ASC").fetchall()
         return [self._event_row(r) for r in rows]
 
+    def has_source(self, source: str) -> bool:
+        self.init()
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT 1 FROM events WHERE source = ? LIMIT 1",
+                (source,),
+            ).fetchone()
+        return row is not None
+
     def replace_lessons(self, lessons: list[Lesson]) -> None:
         self.init()
         with self.connect() as db:

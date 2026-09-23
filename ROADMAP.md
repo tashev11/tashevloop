@@ -11,11 +11,13 @@
 - [x] tests and CLI
 
 ## v0.2 — Automatic capture
-- [ ] Git commit and revert ingestion
-- [ ] test failure/success ingestion
+- [x] Git commit and revert ingestion
+- [x] test failure/success ingestion
 - [ ] CI workflow adapter
-- [ ] JSONL import/export
-- [ ] deduplication and lesson supersession
+- [x] JSONL import
+- [ ] JSONL export
+- [x] source-level import deduplication
+- [ ] lesson supersession
 
 ## v0.3 — AI adapters
 - [ ] Codex adapter

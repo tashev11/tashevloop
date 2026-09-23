@@ -53,6 +53,22 @@ Generate a compact context file for any AI:
 
 Then point Codex, Claude, Gemini, Cursor, Windsurf, Copilot or another agent at that file.
 
+## Automatic capture
+
+Learn from recent Git history without manually rewriting every event:
+
+    tashevloop ingest-git --limit 50
+
+Run a project test command through TashevLoop so pass/fail becomes evidence:
+
+    tashevloop test-run -- python -m unittest discover -s tests
+
+Import events produced by another AI or automation:
+
+    tashevloop ingest-jsonl examples/session.jsonl
+
+Repeated imports are deduplicated where a stable source identity exists.
+
 ## Commands
 
 | Command | Purpose |
@@ -62,6 +78,9 @@ Then point Codex, Claude, Gemini, Cursor, Windsurf, Copilot or another agent at 
 | tashevloop learn | turn evidence into reusable lessons |
 | tashevloop suggest | rank lessons for the next task |
 | tashevloop context | generate compact AI-ready Markdown |
+| tashevloop ingest-git | automatically capture recent Git history |
+| tashevloop ingest-jsonl | import evidence from other tools |
+| tashevloop test-run -- COMMAND | run tests and learn from pass/fail |
 | tashevloop stats | inspect memory size |
 | tashevloop doctor | verify local setup |
 

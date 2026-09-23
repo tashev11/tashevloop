@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from . import __version__
+from .capture import ingest_git, ingest_jsonl, run_test_command
 from .engine import context_markdown, learn, suggest
 from .models import Event, VALID_KINDS
 from .store import Store
@@ -44,6 +45,15 @@ def parser() -> argparse.ArgumentParser:
     ctx.add_argument("query")
     ctx.add_argument("--limit", type=int, default=5)
     ctx.add_argument("--output", default="")
+
+    git_cmd = sub.add_parser("ingest-git", help="learn from recent Git commits")
+    git_cmd.add_argument("--limit", type=int, default=50)
+
+    jsonl_cmd = sub.add_parser("ingest-jsonl", help="import external evidence from JSONL")
+    jsonl_cmd.add_argument("path")
+
+    test_cmd = sub.add_parser("test-run", help="run a test command and learn from its outcome")
+    test_cmd.add_argument("test_command", nargs=argparse.REMAINDER)
 
     sub.add_parser("stats", help="show local memory statistics")
     sub.add_parser("doctor", help="check TashevLoop project state")
@@ -106,6 +116,38 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(text, end="")
         return 0
+
+    if args.command == "ingest-git":
+        result = ingest_git(project, args.limit)
+        lessons = learn(project)
+        print(
+            f"✓ git evidence: {result['imported']} imported, "
+            f"{result['skipped']} already known · {len(lessons)} lessons"
+        )
+        return 0
+
+    if args.command == "ingest-jsonl":
+        result = ingest_jsonl(project, Path(args.path))
+        lessons = learn(project)
+        print(
+            f"✓ JSONL evidence: {result['imported']} imported, "
+            f"{result['skipped']} already known · {len(lessons)} lessons"
+        )
+        return 0
+
+    if args.command == "test-run":
+        command = list(args.test_command)
+        if command and command[0] == "--":
+            command = command[1:]
+        if not command:
+            raise SystemExit("test-run requires a command after --")
+        result = run_test_command(project, command)
+        learn(project)
+        state = "PASS" if result["passed"] else "FAIL"
+        print(f"{state} · exit {result['returncode']} · event #{result['event_id']}")
+        if result["output"]:
+            print(result["output"])
+        return 0 if result["passed"] else result["returncode"] or 1
 
     if args.command == "stats":
         print(json.dumps(store.stats(), ensure_ascii=False, indent=2))

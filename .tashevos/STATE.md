@@ -9,13 +9,17 @@ Updated: 2026-09-23
 - Task relevance suggestions implemented.
 - Compact context generator implemented.
 - CLI implemented.
-- Tests and attribution files added.
+- Public GitHub repository published at https://github.com/tashev11/tashevloop.
+- Apache 2.0 license synchronized with the GitHub repository.
+- Automatic Git commit ingestion implemented.
+- Test pass/fail capture implemented.
+- JSONL evidence import with deduplication implemented.
+- Local test suite: 5 tests passing.
+- GitHub Actions workflow is temporarily manual-only because GitHub reports the owner account is locked due to a billing issue.
 
 ## Next
-1. Run tests and self-demo.
-2. Fix failures.
-3. Initial v0.1 committed as 917b016.
-4. Create public GitHub repository tashev11/tashevloop (current push fails: Repository not found).
-5. Push main and verify CI.
-6. Add automatic Git/test ingestion.
-7. Add AI adapters and MCP server.
+1. Add Codex, Claude Code and Gemini adapters.
+2. Add MCP server for reading/writing project lessons.
+3. Add lesson supersession and contradiction handling.
+4. Add JSONL export and CI adapter.
+5. Improve GitHub visual packaging and examples.
