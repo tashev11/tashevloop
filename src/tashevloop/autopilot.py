@@ -4,7 +4,6 @@ import json
 import re
 import shlex
 import subprocess
-import sys
 import time
 from pathlib import Path
 from typing import Callable
@@ -16,6 +15,29 @@ from .store import Store
 
 
 AgentRunner = Callable[[Path, str, float], dict]
+
+# The agent may only read and edit files inside its worktree. Shell access
+# would hand it the network and the whole machine, and the outer gate runs
+# verification anyway, so Bash is disabled together with the web tools.
+AGENT_ALLOWED_TOOLS = "Read,Edit,Write,Glob,Grep"
+AGENT_DISALLOWED_TOOLS = "Bash,WebFetch,WebSearch"
+
+# A candidate that touches these could weaken the gate that judges it.
+PROTECTED_FILES = frozenset({
+    "LICENSE",
+    "NOTICE",
+    "scripts/run_tests.py",
+    "scripts/daemon_runner.py",
+    "scripts/start_daemon.py",
+    "scripts/stop_daemon.py",
+})
+PROTECTED_PREFIXES = (".github/",)
+TESTS_DIR = "tests/"
+# New test modules are welcome; these two change how discovery runs the suite.
+TEST_HOOK_NAMES = frozenset({"__init__.py", "conftest.py"})
+
+# Outcomes that leave a verified commit on its branch for the developer.
+KEEP_BRANCH = frozenset({"verified-branch", "main-moved", "main-dirty", "merge-failed"})
 
 
 def _git(project: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -83,8 +105,8 @@ def default_claude_runner(worktree: Path, prompt: str, max_budget_usd: float) ->
         "-p", prompt,
         "--permission-mode", "acceptEdits",
         "--permission-prompts", "none",
-        "--allowedTools", "Read,Edit,Write,Bash(git *),Bash(python3 *)",
-        "--disallowedTools", "WebFetch,WebSearch",
+        "--allowedTools", AGENT_ALLOWED_TOOLS,
+        "--disallowedTools", AGENT_DISALLOWED_TOOLS,
         "--max-budget-usd", str(max(0.05, max_budget_usd)),
         "--output-format", "json",
         "--no-session-persistence",
@@ -106,7 +128,7 @@ def default_claude_runner(worktree: Path, prompt: str, max_budget_usd: float) ->
 
 def _verification(project: Path, test_command: str) -> dict:
     if not test_command.strip():
-        return {"passed": True, "returncode": 0, "output": "No verification command configured."}
+        return {"passed": False, "returncode": None, "output": "No verification command configured."}
     proc = subprocess.run(
         shlex.split(test_command),
         cwd=project,
@@ -120,6 +142,65 @@ def _verification(project: Path, test_command: str) -> dict:
         "returncode": proc.returncode,
         "output": output[-6000:],
     }
+
+
+def _staged_changes(worktree: Path, base: str) -> list[tuple[str, str]]:
+    """Return (kind, path) for every staged change against base.
+
+    kind is "A", "M" or "D". A rename reports its old path as deleted and its
+    new path as added, so renaming an existing test counts as removing it.
+    """
+    raw = _git(worktree, "diff", "--cached", "--name-status", "-z", "-M", base).stdout
+    fields = raw.split("\0")
+    changes: list[tuple[str, str]] = []
+    i = 0
+    while i < len(fields) and fields[i]:
+        code = fields[i][0]
+        if code in "RC":
+            old, new = fields[i + 1], fields[i + 2]
+            if code == "R":
+                changes.append(("D", old))
+            changes.append(("A", new))
+            i += 3
+        else:
+            changes.append((code if code in "AD" else "M", fields[i + 1]))
+            i += 2
+    return changes
+
+
+def _protected_violations(changes: list[tuple[str, str]]) -> list[str]:
+    bad: set[str] = set()
+    for kind, path in changes:
+        guarded = path in PROTECTED_FILES or path.startswith(PROTECTED_PREFIXES)
+        weakens_tests = path.startswith(TESTS_DIR) and (kind != "A" or Path(path).name in TEST_HOOK_NAMES)
+        if guarded or weakens_tests:
+            bad.add(path)
+    return sorted(bad)
+
+
+def _fast_forward(project: Path, base_head: str, candidate_head: str, title: str) -> tuple[str, str]:
+    """Advance the developer's checkout to a merge commit built outside any working tree.
+
+    The merge commit reuses the verified candidate tree, so nothing is
+    verified or reverted in the checkout. It only receives a fast-forward,
+    and only while it is clean and still at the commit the attempt started from.
+    """
+    if _head(project) != base_head:
+        return "main-moved", "main moved while the candidate was being built"
+    if _git(project, "status", "--porcelain").stdout.strip():
+        return "main-dirty", "the checkout has uncommitted changes"
+    tree = _git(project, "rev-parse", f"{candidate_head}^{{tree}}").stdout.strip()
+    merge = _git(
+        project,
+        "commit-tree", tree,
+        "-p", base_head,
+        "-p", candidate_head,
+        "-m", f"merge autopilot: {title[:65]}",
+    ).stdout.strip()
+    forward = _git(project, "merge", "--ff-only", merge, check=False)
+    if forward.returncode != 0:
+        return "merge-failed", forward.stderr[-3000:]
+    return "merged", merge
 
 
 def _record_attempt(project: Path, proposal: dict, outcome: str, detail: str = "") -> None:
@@ -141,6 +222,31 @@ def _record_attempt(project: Path, proposal: dict, outcome: str, detail: str = "
     _write_state(project, state)
 
 
+def _record_mistake(project: Path, proposal: dict, description: str, source: str) -> None:
+    Store(project).add_event(Event(
+        kind="mistake",
+        title=str(proposal["title"]),
+        description=description,
+        tags=list(proposal.get("tags", [])) + ["autopilot"],
+        source=source,
+    ))
+    learn(project)
+
+
+def _finish(project: Path, proposal: dict, result: dict, status: str, detail: str = "") -> dict:
+    result["status"] = status
+    if detail and status not in {"merged", "verified-branch"}:
+        result["detail"] = detail[-3000:]
+    _record_attempt(project, proposal, status, detail)
+    return result
+
+
+def _cleanup(project: Path, worktree: Path, branch: str, status: str) -> None:
+    _git(project, "worktree", "remove", "--force", str(worktree), check=False)
+    if status not in KEEP_BRANCH:
+        _git(project, "branch", "-D", branch, check=False)
+
+
 def run_once(
     project: Path,
     test_command: str,
@@ -149,6 +255,9 @@ def run_once(
     merge_verified: bool = True,
 ) -> dict:
     project = project.resolve()
+    if not test_command.strip():
+        return {"status": "blocked", "reason": "a verification command is required"}
+
     store = Store(project)
     proposal = select_candidate(project)
     if proposal is None:
@@ -172,6 +281,7 @@ def run_once(
         "worktree": str(worktree),
         "base_head": base_head,
     }
+    signature = proposal["signature"]
 
     try:
         context = context_markdown(project, str(proposal["title"]), limit=7)
@@ -187,40 +297,44 @@ Project-learned context:
 {context}
 
 Rules:
-- Work only inside this isolated git worktree.
+- Work only inside this isolated git worktree. You can read, edit and create files; you cannot run commands.
+- The outer TashevLoop gate runs the verification command and commits the result.
 - Make the smallest safe change that addresses this task.
+- Cover behavioral changes with new test files under tests/. Do not modify or delete existing tests.
+- Do not change LICENSE, NOTICE, .github/ or the runner scripts in scripts/; such candidates are rejected automatically.
 - Do not deploy, publish, push, access secrets, or use the web.
-- Do not change LICENSE or weaken project guardrails.
-- Add or update tests for behavioral changes.
-- Do not commit; the outer TashevLoop gate will verify and commit.
 - If the task cannot be safely solved from repository evidence, make no changes and explain why.
 """
         runner = agent_runner or default_claude_runner
-        agent_result = runner(worktree, prompt, max_budget_usd)
+        try:
+            agent_result = runner(worktree, prompt, max_budget_usd)
+        except Exception as exc:
+            # A timeout or a missing CLI still counts as an attempt; otherwise
+            # the same proposal would start another paid run on every cycle.
+            return _finish(project, proposal, result, "agent-error", f"{type(exc).__name__}: {exc}")
         result["agent"] = agent_result
 
-        diff = _git(worktree, "status", "--porcelain").stdout.strip()
-        if not diff:
-            _record_attempt(project, proposal, "no-change", agent_result.get("stdout", ""))
-            result["status"] = "no-change"
-            return result
+        if not _git(worktree, "status", "--porcelain").stdout.strip():
+            return _finish(project, proposal, result, "no-change", agent_result.get("stdout", ""))
+
+        _git(worktree, "add", "-A")
+        violations = _protected_violations(_staged_changes(worktree, base_head))
+        if violations:
+            detail = "Candidate changed protected paths: " + ", ".join(violations)
+            _record_mistake(project, proposal, detail, f"autopilot-protected:{base_head}:{signature}")
+            return _finish(project, proposal, result, "protected-change", detail)
 
         verification = _verification(worktree, test_command)
         result["verification"] = verification
         if not verification["passed"]:
-            store.add_event(Event(
-                kind="mistake",
-                title=str(proposal["title"]),
-                description=f"Autopilot candidate failed verification.\n{verification['output']}",
-                tags=list(proposal.get("tags", [])) + ["autopilot"],
-                source=f"autopilot:{base_head}:{proposal['signature']}",
-            ))
-            learn(project)
-            _record_attempt(project, proposal, "verification-failed", verification["output"])
-            result["status"] = "verification-failed"
-            return result
+            _record_mistake(
+                project,
+                proposal,
+                f"Autopilot candidate failed verification.\n{verification['output']}",
+                f"autopilot:{base_head}:{signature}",
+            )
+            return _finish(project, proposal, result, "verification-failed", verification["output"])
 
-        _git(worktree, "add", ".")
         commit = _git(
             worktree,
             "commit",
@@ -229,57 +343,17 @@ Rules:
             check=False,
         )
         if commit.returncode != 0:
-            result["status"] = "commit-failed"
-            result["detail"] = commit.stderr[-3000:]
-            _record_attempt(project, proposal, "commit-failed", result["detail"])
-            return result
+            return _finish(project, proposal, result, "commit-failed", commit.stderr[-3000:])
 
         candidate_head = _head(worktree)
         result["candidate_head"] = candidate_head
 
         if not merge_verified:
-            _record_attempt(project, proposal, "verified-branch", branch)
-            result["status"] = "verified-branch"
-            return result
+            return _finish(project, proposal, result, "verified-branch", branch)
 
-        if _head(project) != base_head:
-            _record_attempt(project, proposal, "main-moved", branch)
-            result["status"] = "main-moved"
-            return result
-
-        merge = _git(
-            project,
-            "merge",
-            "--no-ff",
-            branch,
-            "-m",
-            f"merge autopilot: {str(proposal['title'])[:65]}",
-            check=False,
-        )
-        if merge.returncode != 0:
-            result["status"] = "merge-failed"
-            result["detail"] = merge.stderr[-3000:]
-            _git(project, "merge", "--abort", check=False)
-            _record_attempt(project, proposal, "merge-failed", result["detail"])
-            return result
-
-        post = _verification(project, test_command)
-        result["post_merge_verification"] = post
-        if not post["passed"]:
-            merge_head = _head(project)
-            revert = _git(project, "revert", "-m", "1", "--no-edit", merge_head, check=False)
-            result["status"] = "reverted"
-            result["revert_returncode"] = revert.returncode
-            store.add_event(Event(
-                kind="mistake",
-                title=str(proposal["title"]),
-                description=f"Autopilot merge failed post-merge verification and was reverted.\n{post['output']}",
-                tags=list(proposal.get("tags", [])) + ["autopilot"],
-                source=f"autopilot-post:{merge_head}:{proposal['signature']}",
-            ))
-            learn(project)
-            _record_attempt(project, proposal, "reverted", post["output"])
-            return result
+        status, detail = _fast_forward(project, base_head, candidate_head, str(proposal["title"]))
+        if status != "merged":
+            return _finish(project, proposal, result, status, detail)
 
         store.add_event(Event(
             kind="fix",
@@ -287,17 +361,16 @@ Rules:
             description="Autopilot implemented the improvement in an isolated worktree and all configured checks passed.",
             solution=str(proposal["action"]),
             tags=list(proposal.get("tags", [])) + ["autopilot"],
-            source=f"autopilot-success:{candidate_head}:{proposal['signature']}",
+            source=f"autopilot-success:{candidate_head}:{signature}",
         ))
         learn(project)
         build_improvement_plan(project)
-        _record_attempt(project, proposal, "merged", candidate_head)
-        result["status"] = "merged"
         result["head"] = _head(project)
-        return result
+        return _finish(project, proposal, result, "merged", candidate_head)
+    except Exception as exc:
+        if result["status"] == "started":
+            result["status"] = "error"
+            _record_attempt(project, proposal, "error", f"{type(exc).__name__}: {exc}")
+        raise
     finally:
-        status = result.get("status")
-        if status in {"merged", "verification-failed", "no-change", "commit-failed", "reverted"}:
-            _git(project, "worktree", "remove", "--force", str(worktree), check=False)
-            if status == "merged":
-                _git(project, "branch", "-D", branch, check=False)
+        _cleanup(project, worktree, branch, result["status"])
