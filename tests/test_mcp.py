@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tashevloop import __version__
 from tashevloop.mcp_server import call_tool, handle_request
 
 
@@ -9,6 +10,7 @@ class MCPTests(unittest.TestCase):
     def test_initialize_and_tool_list(self):
         init = handle_request({"jsonrpc":"2.0","id":1,"method":"initialize"}, Path("."))
         self.assertEqual(init["result"]["serverInfo"]["name"], "tashevloop")
+        self.assertEqual(init["result"]["serverInfo"]["version"], __version__)
         tools = handle_request({"jsonrpc":"2.0","id":2,"method":"tools/list"}, Path("."))
         names = {item["name"] for item in tools["result"]["tools"]}
         self.assertIn("tashevloop_context", names)

@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from . import __version__
 from .engine import context_markdown, learn
 from .evolution import build_improvement_plan
 from .models import Event, VALID_KINDS
@@ -122,7 +123,7 @@ def handle_request(request: dict[str, Any], project: Path | None = None) -> dict
         result = {
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "tashevloop", "version": "0.1.0"},
+            "serverInfo": {"name": "tashevloop", "version": __version__},
         }
     elif method == "tools/list":
         result = {"tools": tool_catalog()}

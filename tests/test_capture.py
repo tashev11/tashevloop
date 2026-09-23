@@ -4,11 +4,33 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tashevloop.capture import ingest_git, ingest_jsonl, run_test_command
+from tashevloop.capture import (
+    _classify_commit,
+    ingest_git,
+    ingest_jsonl,
+    run_test_command,
+)
 from tashevloop.store import Store
 
 
 class CaptureTests(unittest.TestCase):
+    def test_commit_classification_matches_whole_words(self):
+        cases = {
+            "add debug logging": "success",
+            "support path prefix": "success",
+            "update fixtures": "success",
+            "refactor: rename bugs page": "success",
+            "неисправность датчика задокументирована": "success",
+            "fix: crash on empty cart": "fix",
+            "Hotfix release build": "fix",
+            "исправил вход": "fix",
+            'Revert "add feature"': "warning",
+            "откатил миграцию": "warning",
+        }
+        for subject, kind in cases.items():
+            with self.subTest(subject=subject):
+                self.assertEqual(_classify_commit(subject), kind)
+
     def test_git_ingestion_is_deduplicated(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)
