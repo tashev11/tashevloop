@@ -100,6 +100,25 @@ Every lesson has evidence count, failure count, verified success/fix count, conf
 
 Adapters and automatic session ingestion are on the roadmap. The data model is neutral so no AI vendor owns the project memory.
 
+## Continuous learning
+
+TashevLoop can stay running next to a repository:
+
+    tashevloop watch --interval 60
+
+On each repository change it can ingest Git history, run a verification command, rebuild lessons, adapt recommendation ranking and regenerate its improvement queue.
+
+The repository also ships portable runner scripts:
+
+    python3 scripts/start_daemon.py
+    python3 scripts/stop_daemon.py
+
+The current status is stored in .tashevloop/daemon-status.json and proposed improvements in .tashevloop/IMPROVEMENTS.md.
+
+The loop is deliberately economical: when the Git HEAD has not changed, it does not rerun tests or call an AI model.
+
+See docs/SELF_EVOLUTION.md.
+
 ## Why this is different from chat memory
 
 Chat memory answers: **what happened before?**

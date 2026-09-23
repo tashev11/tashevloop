@@ -6,7 +6,9 @@ from pathlib import Path
 
 from . import __version__
 from .capture import ingest_git, ingest_jsonl, run_test_command
+from .daemon import cycle, watch
 from .engine import context_markdown, learn, suggest
+from .evolution import build_improvement_plan
 from .models import Event, VALID_KINDS
 from .store import Store
 
@@ -54,6 +56,13 @@ def parser() -> argparse.ArgumentParser:
 
     test_cmd = sub.add_parser("test-run", help="run a test command and learn from its outcome")
     test_cmd.add_argument("test_command", nargs=argparse.REMAINDER)
+
+    sub.add_parser("evolve", help="analyze accumulated evidence and propose next improvements")
+
+    watch_cmd = sub.add_parser("watch", help="continuously learn when the repository changes")
+    watch_cmd.add_argument("--interval", type=int, default=60, help="poll interval in seconds")
+    watch_cmd.add_argument("--test-command", default="", help="optional test command to run after changes")
+    watch_cmd.add_argument("--once", action="store_true", help="run one learning cycle and exit")
 
     sub.add_parser("stats", help="show local memory statistics")
     sub.add_parser("doctor", help="check TashevLoop project state")
@@ -148,6 +157,28 @@ def main(argv: list[str] | None = None) -> int:
         if result["output"]:
             print(result["output"])
         return 0 if result["passed"] else result["returncode"] or 1
+
+    if args.command == "evolve":
+        proposals = build_improvement_plan(project)
+        if not proposals:
+            print("✓ no high-signal improvement proposals yet")
+        else:
+            print(f"✓ generated {len(proposals)} improvement proposal(s)")
+            for item in proposals[:10]:
+                print(f"  [{item['priority']}] {item['title']}: {item['action']}")
+        print(f"  report: {store.home / 'IMPROVEMENTS.md'}")
+        return 0
+
+    if args.command == "watch":
+        if args.once:
+            result = cycle(project, test_command=args.test_command, force=True)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+        print(f"✓ TashevLoop watch started · interval {max(5, args.interval)}s")
+        if args.test_command:
+            print(f"  verification: {args.test_command}")
+        watch(project, interval=args.interval, test_command=args.test_command)
+        return 0
 
     if args.command == "stats":
         print(json.dumps(store.stats(), ensure_ascii=False, indent=2))

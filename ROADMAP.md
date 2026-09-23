@@ -29,7 +29,10 @@
 ## v0.4 — Smarter ranking
 - [ ] optional local embeddings
 - [ ] stale lesson decay
-- [ ] project-area scoping
+- [x] adaptive project-area reliability
+- [x] repeated-failure improvement proposals
+- [x] continuous repository watcher
+- [x] verified-test feedback loop
 - [ ] regression-aware confidence
 - [ ] contradiction detection
 

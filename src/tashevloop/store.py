@@ -125,14 +125,38 @@ class Store:
             event_count = db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
             lesson_count = db.execute("SELECT COUNT(*) FROM lessons").fetchone()[0]
             failures = db.execute("SELECT COUNT(*) FROM events WHERE kind='mistake'").fetchone()[0]
+            warnings = db.execute("SELECT COUNT(*) FROM events WHERE kind='warning'").fetchone()[0]
             fixes = db.execute("SELECT COUNT(*) FROM events WHERE kind='fix'").fetchone()[0]
+            successes = db.execute("SELECT COUNT(*) FROM events WHERE kind='success'").fetchone()[0]
         return {
             "events": event_count,
             "lessons": lesson_count,
             "mistakes": failures,
+            "warnings": warnings,
             "fixes": fixes,
+            "successes": successes,
             "updated_at": utc_now(),
         }
+
+    def tag_reliability(self) -> dict[str, float]:
+        """Return smoothed success ratio for every observed tag."""
+        totals: dict[str, list[int]] = {}
+        for event in self.events():
+            positive = event["kind"] in {"fix", "success"}
+            negative = event["kind"] in {"mistake", "warning"}
+            if not (positive or negative):
+                continue
+            for tag in event["tags"]:
+                pair = totals.setdefault(tag, [0, 0])
+                if positive:
+                    pair[0] += 1
+                if negative:
+                    pair[1] += 1
+
+        result: dict[str, float] = {}
+        for tag, (good, bad) in totals.items():
+            result[tag] = round((good + 1) / (good + bad + 2), 4)
+        return result
 
     @staticmethod
     def _event_row(row: sqlite3.Row) -> dict:

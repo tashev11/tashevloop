@@ -77,12 +77,25 @@ def suggest(project: Path, query: str, limit: int = 5) -> list[dict]:
         learn(project)
         rows = store.lessons()
 
+    reliability = store.tag_reliability()
     ranked: list[dict] = []
     for row in rows:
         semantic = overlap_score(query, row["signature"], row["tags"])
-        score = semantic * 0.78 + float(row["confidence"]) * 0.22
+        tag_scores = [reliability[tag] for tag in row["tags"] if tag in reliability]
+        area_reliability = sum(tag_scores) / len(tag_scores) if tag_scores else 0.5
+        instability = max(0, int(row["failure_count"]) - int(row["success_count"])) * 0.03
+        score = (
+            semantic * 0.65
+            + float(row["confidence"]) * 0.20
+            + area_reliability * 0.15
+            - instability
+        )
         if semantic > 0 or row["confidence"] >= 0.75:
-            ranked.append({**row, "score": round(score, 4)})
+            ranked.append({
+                **row,
+                "score": round(max(0.0, score), 4),
+                "area_reliability": round(area_reliability, 4),
+            })
 
     ranked.sort(key=lambda x: (x["score"], x["confidence"], x["evidence_count"]), reverse=True)
     return ranked[: max(1, limit)]
