@@ -16,4 +16,10 @@ if __name__ == "__main__":
         "__import__('unittest').TextTestRunner(verbosity=1).run("
         "__import__('unittest').defaultTestLoader.discover('tests'))\""
     )
-    watch(ROOT, interval=60, test_command=test_command)
+    watch(
+        ROOT,
+        interval=60,
+        test_command=test_command,
+        autopilot=True,
+        max_budget_usd=0.75,
+    )

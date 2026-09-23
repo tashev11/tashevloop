@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from . import __version__
+from .autopilot import run_once as run_autopilot_once
 from .capture import ingest_git, ingest_jsonl, run_test_command
 from .daemon import cycle, watch
 from .engine import context_markdown, learn, suggest
@@ -62,7 +63,14 @@ def parser() -> argparse.ArgumentParser:
     watch_cmd = sub.add_parser("watch", help="continuously learn when the repository changes")
     watch_cmd.add_argument("--interval", type=int, default=60, help="poll interval in seconds")
     watch_cmd.add_argument("--test-command", default="", help="optional test command to run after changes")
+    watch_cmd.add_argument("--autopilot", action="store_true", help="allow gated Claude Code self-improvement for high-priority proposals")
+    watch_cmd.add_argument("--max-budget-usd", type=float, default=0.75, help="per-attempt Claude budget cap")
     watch_cmd.add_argument("--once", action="store_true", help="run one learning cycle and exit")
+
+    auto_cmd = sub.add_parser("autopilot", help="attempt one gated high-priority self-improvement")
+    auto_cmd.add_argument("--test-command", required=True, help="verification command required before merge")
+    auto_cmd.add_argument("--max-budget-usd", type=float, default=0.75)
+    auto_cmd.add_argument("--no-merge", action="store_true", help="leave a verified branch instead of merging")
 
     sub.add_parser("stats", help="show local memory statistics")
     sub.add_parser("doctor", help="check TashevLoop project state")
@@ -171,14 +179,38 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "watch":
         if args.once:
-            result = cycle(project, test_command=args.test_command, force=True)
+            result = cycle(
+                project,
+                test_command=args.test_command,
+                force=True,
+                autopilot=args.autopilot,
+                max_budget_usd=args.max_budget_usd,
+            )
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         print(f"✓ TashevLoop watch started · interval {max(5, args.interval)}s")
         if args.test_command:
             print(f"  verification: {args.test_command}")
-        watch(project, interval=args.interval, test_command=args.test_command)
+        if args.autopilot:
+            print(f"  gated autopilot: ON · budget cap ${args.max_budget_usd:.2f}/attempt")
+        watch(
+            project,
+            interval=args.interval,
+            test_command=args.test_command,
+            autopilot=args.autopilot,
+            max_budget_usd=args.max_budget_usd,
+        )
         return 0
+
+    if args.command == "autopilot":
+        result = run_autopilot_once(
+            project,
+            test_command=args.test_command,
+            max_budget_usd=args.max_budget_usd,
+            merge_verified=not args.no_merge,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result.get("status") not in {"verification-failed", "merge-failed", "reverted"} else 1
 
     if args.command == "stats":
         print(json.dumps(store.stats(), ensure_ascii=False, indent=2))

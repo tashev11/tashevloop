@@ -33,6 +33,8 @@
 - [x] repeated-failure improvement proposals
 - [x] continuous repository watcher
 - [x] verified-test feedback loop
+- [x] gated Claude Code self-modification in isolated worktrees
+- [x] evidence-level retry suppression for agent spend
 - [ ] regression-aware confidence
 - [ ] contradiction detection
 

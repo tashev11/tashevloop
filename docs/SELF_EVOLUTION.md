@@ -29,19 +29,21 @@ TashevLoop is designed to improve continuously without blindly rewriting its own
 
 TashevLoop does not directly rewrite production source simply because an inferred lesson says so.
 
-Source-code self-improvement should use a gated loop:
+Source-code self-improvement uses a gated loop:
 
     proposal
        ↓
     isolated branch/worktree
        ↓
-    AI or deterministic implementation
+    Claude Code bounded implementation
        ↓
     tests / checks
        ↓
-    accept only verified improvement
+    merge only if verified and main did not move
        ↓
     record outcome as evidence
+
+The default Claude runner blocks WebFetch/WebSearch, limits the task scope, applies a per-attempt budget cap, and never edits the active main worktree directly. TashevLoop also remembers the evidence level of each attempt so the same unresolved signal cannot trigger repeated paid attempts without new evidence.
 
 This keeps the system capable of learning continuously while avoiding irreversible self-corruption.
 

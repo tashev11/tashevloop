@@ -117,7 +117,21 @@ The current status is stored in .tashevloop/daemon-status.json and proposed impr
 
 The loop is deliberately economical: when the Git HEAD has not changed, it does not rerun tests or call an AI model.
 
-See docs/SELF_EVOLUTION.md.
+### Gated self-development
+
+When Claude Code is available, TashevLoop can attempt high-priority improvements autonomously:
+
+    tashevloop watch \
+      --interval 60 \
+      --test-command "python3 -m unittest discover -s tests" \
+      --autopilot \
+      --max-budget-usd 0.75
+
+Autopilot never edits the active main worktree directly. It creates an isolated Git worktree and branch, gives Claude one bounded task, blocks web access, verifies the result, and merges only if the configured checks pass and main has not moved.
+
+A proposal is attempted only once for the current evidence level. New evidence is required before TashevLoop will spend another agent attempt on the same problem.
+
+See docs/SELF_EVOLUTION.md and docs/MCP.md.
 
 ## Why this is different from chat memory
 
