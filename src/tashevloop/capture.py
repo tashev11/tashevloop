@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -8,15 +9,23 @@ from .models import Event
 from .store import Store
 
 
-FIX_WORDS = ("fix", "fixed", "bug", "hotfix", "repair", "исправ", "почин")
-REVERT_WORDS = ("revert", "rollback", "откат")
+# Whole words only: "debug", "prefix" and "fixtures" are not fixes, and
+# "неисправность" (a malfunction) is not a repair.
+FIX_PATTERN = re.compile(
+    r"\b(?:fix(?:e[sd]|ing)?|bug|bug-?fix(?:es)?|hotfix(?:es)?|repair(?:s|ed|ing)?)\b"
+    r"|\bисправ\w*|\bпочин\w*",
+    re.IGNORECASE,
+)
+REVERT_PATTERN = re.compile(
+    r"\b(?:revert(?:s|ed|ing)?|roll[- ]?back)\b|\bоткат\w*",
+    re.IGNORECASE,
+)
 
 
 def _classify_commit(subject: str) -> str:
-    lower = subject.lower()
-    if any(word in lower for word in REVERT_WORDS):
+    if REVERT_PATTERN.search(subject):
         return "warning"
-    if any(word in lower for word in FIX_WORDS):
+    if FIX_PATTERN.search(subject):
         return "fix"
     return "success"
 

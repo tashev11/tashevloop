@@ -1,9 +1,7 @@
 name: CI
 
-# Temporarily manual-only because the repository owner account is currently
-# blocked from starting GitHub-hosted runners by a GitHub billing lock.
-# Local verification remains available and this workflow can be restored to
-# push/pull_request triggers after the account issue is cleared.
+# Manual-only for now. Local verification: python3 scripts/run_tests.py.
+# Restore push/pull_request triggers once hosted runners are available.
 on:
   workflow_dispatch:
 

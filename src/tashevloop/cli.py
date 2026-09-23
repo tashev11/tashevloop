@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 from pathlib import Path
 
 from . import __version__
@@ -62,7 +63,7 @@ def parser() -> argparse.ArgumentParser:
 
     watch_cmd = sub.add_parser("watch", help="continuously learn when the repository changes")
     watch_cmd.add_argument("--interval", type=int, default=60, help="poll interval in seconds")
-    watch_cmd.add_argument("--test-command", default="", help="optional test command to run after changes")
+    watch_cmd.add_argument("--test-command", default="", help="test command to run after changes (required with --autopilot)")
     watch_cmd.add_argument("--autopilot", action="store_true", help="allow gated Claude Code self-improvement for high-priority proposals")
     watch_cmd.add_argument("--max-budget-usd", type=float, default=0.75, help="per-attempt Claude budget cap")
     watch_cmd.add_argument("--once", action="store_true", help="run one learning cycle and exit")
@@ -77,8 +78,35 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+def _doctor_checks(project: Path, store: Store) -> list[tuple[bool, str]]:
+    inside = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=project,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if inside.returncode != 0 or inside.stdout.strip() != "true":
+        return [(False, "not a Git repository: ingest-git, watch and autopilot need one")]
+    checks = [(True, "Git repository")]
+    ignored = subprocess.run(
+        ["git", "check-ignore", "-q", str(store.db_path)],
+        cwd=project,
+        check=False,
+    ).returncode == 0
+    checks.append((
+        ignored,
+        ".tashevloop/ is ignored by Git" if ignored
+        else ".tashevloop/ is not ignored by Git: memory.db could be committed",
+    ))
+    return checks
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = parser().parse_args(argv)
+    cli = parser()
+    args = cli.parse_args(argv)
+    if args.command == "watch" and args.autopilot and not args.test_command.strip():
+        cli.error("watch --autopilot requires --test-command: autopilot merges only verified changes")
     project = project_path(args.project)
     store = Store(project)
 
@@ -223,7 +251,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"project: {project}")
         print(f"database: {store.db_path}")
         print(f"events: {stats['events']} · lessons: {stats['lessons']}")
-        print("status: OK")
+        checks = _doctor_checks(project, store)
+        for ok, message in checks:
+            print(f"{'✓' if ok else '!'} {message}")
+        warnings = sum(1 for ok, _ in checks if not ok)
+        print("status: OK" if not warnings else f"status: {warnings} warning(s)")
         return 0
 
     return 2

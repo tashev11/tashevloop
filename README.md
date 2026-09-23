@@ -119,17 +119,29 @@ The loop is deliberately economical: when the Git HEAD has not changed, it does 
 
 ### Gated self-development
 
-When Claude Code is available, TashevLoop can attempt high-priority improvements autonomously:
+When Claude Code is available, TashevLoop can attempt high-priority improvements autonomously. A verification command is required:
 
     tashevloop watch \
       --interval 60 \
-      --test-command "python3 -m unittest discover -s tests" \
+      --test-command "python3 scripts/run_tests.py" \
       --autopilot \
       --max-budget-usd 0.75
 
-Autopilot never edits the active main worktree directly. It creates an isolated Git worktree and branch, gives Claude one bounded task, blocks web access, verifies the result, and merges only if the configured checks pass and main has not moved.
+The verification command runs inside the isolated worktree, so it must test that checkout. `scripts/run_tests.py` does this for this repository and exits non-zero when a test fails.
 
-A proposal is attempted only once for the current evidence level. New evidence is required before TashevLoop will spend another agent attempt on the same problem.
+How an attempt runs:
+
+1. TashevLoop creates an isolated Git worktree and branch and gives Claude one bounded task.
+2. The agent can read, edit and create files in that worktree. Bash, WebFetch and WebSearch are disabled, so it cannot run commands or reach the network.
+3. Candidates that modify or delete existing tests, add test discovery hooks, or touch LICENSE, NOTICE, `.github/` or the runner scripts are rejected before verification.
+4. The verification command runs in the worktree. A failure is recorded as evidence and nothing reaches your branch.
+5. A verified candidate is committed on its branch. Your checkout is only fast-forwarded to it, and only while it is clean and still at the commit the attempt started from. Otherwise the verified branch is kept for you to merge.
+
+Your working directory never runs agent verification and never receives revert commits.
+
+A proposal is attempted only once for the current evidence level, including attempts that time out or fail to start. New evidence is required before TashevLoop will spend another agent attempt on the same problem.
+
+Verification executes code the agent wrote, with your user permissions. Enable the autopilot only in repositories you trust.
 
 See docs/SELF_EVOLUTION.md and docs/MCP.md.
 
@@ -143,7 +155,7 @@ That distinction is the product.
 
 ## Privacy
 
-The local database lives inside the project at .tashevloop/memory.db and is gitignored by default. v0.1 sends nothing to a TashevLoop server.
+The local database lives inside the project at .tashevloop/memory.db. TashevLoop writes .tashevloop/.gitignore, so the store stays out of Git history even if your project does not ignore it. TashevLoop sends nothing to a TashevLoop server.
 
 ## Attribution
 

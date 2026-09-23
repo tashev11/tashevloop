@@ -96,7 +96,7 @@ def build_improvement_plan(project: Path) -> list[dict]:
     lines = [
         "# TashevLoop Improvement Plan",
         "",
-        "Generated from project evidence. These are proposals, not automatic code mutations.",
+        "Generated from project evidence. With the autopilot enabled, high-priority items may be attempted automatically in an isolated worktree.",
         "",
     ]
     if not proposals:

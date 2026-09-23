@@ -35,15 +35,21 @@ Source-code self-improvement uses a gated loop:
        ↓
     isolated branch/worktree
        ↓
-    Claude Code bounded implementation
+    Claude Code bounded implementation (files only: no commands, no web)
        ↓
-    tests / checks
+    tamper check: existing tests, runner scripts, CI, LICENSE untouched
        ↓
-    merge only if verified and main did not move
+    verification command inside the worktree
+       ↓
+    fast-forward the checkout only if it is clean and main did not move
        ↓
     record outcome as evidence
 
-The default Claude runner blocks WebFetch/WebSearch, limits the task scope, applies a per-attempt budget cap, and never edits the active main worktree directly. TashevLoop also remembers the evidence level of each attempt so the same unresolved signal cannot trigger repeated paid attempts without new evidence.
+The default Claude runner allows only Read, Edit, Write, Glob and Grep and disables Bash, WebFetch and WebSearch. It limits the task scope and applies a per-attempt budget cap. The merge commit is built from the already verified tree, so nothing is verified or reverted in your checkout. If the checkout moved or has uncommitted changes, the verified branch is kept instead.
+
+TashevLoop remembers the evidence level of each attempt, including attempts that time out or fail to start, so the same unresolved signal cannot trigger repeated paid attempts without new evidence.
+
+The tamper check keeps the agent from weakening the gate that judges it. It is not a sandbox: verification runs code the agent wrote, with your user permissions.
 
 This keeps the system capable of learning continuously while avoiding irreversible self-corruption.
 
@@ -65,4 +71,4 @@ Stop:
 
     python3 scripts/stop_daemon.py
 
-The daemon only runs verification after repository changes, so an idle repository does not continuously burn CPU or model tokens.
+The daemon only runs verification after repository changes, so an idle repository does not continuously burn CPU or model tokens. After a failed cycle it still records the HEAD it saw, so an error does not turn into a retry every interval.

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 
 from .models import Event, Lesson, utc_now
@@ -44,7 +46,12 @@ class Store:
 
     def init(self) -> None:
         self.home.mkdir(parents=True, exist_ok=True)
-        with self.connect() as db:
+        ignore = self.home / ".gitignore"
+        if not ignore.exists():
+            # Keep the store out of the host project's Git history even when
+            # that project does not list .tashevloop/ in its own .gitignore.
+            ignore.write_text("*\n", encoding="utf-8")
+        with self.session() as db:
             db.executescript(SCHEMA)
 
     def connect(self) -> sqlite3.Connection:
@@ -53,10 +60,20 @@ class Store:
         db.row_factory = sqlite3.Row
         return db
 
+    @contextmanager
+    def session(self) -> Generator[sqlite3.Connection, None, None]:
+        """Open a connection, commit on success, and always close it."""
+        db = self.connect()
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
+
     def add_event(self, event: Event) -> int:
         event.validate()
         self.init()
-        with self.connect() as db:
+        with self.session() as db:
             cur = db.execute(
                 """INSERT INTO events(kind,title,description,solution,tags,source,created_at)
                    VALUES(?,?,?,?,?,?,?)""",
@@ -74,13 +91,13 @@ class Store:
 
     def events(self) -> list[dict]:
         self.init()
-        with self.connect() as db:
+        with self.session() as db:
             rows = db.execute("SELECT * FROM events ORDER BY id ASC").fetchall()
         return [self._event_row(r) for r in rows]
 
     def has_source(self, source: str) -> bool:
         self.init()
-        with self.connect() as db:
+        with self.session() as db:
             row = db.execute(
                 "SELECT 1 FROM events WHERE source = ? LIMIT 1",
                 (source,),
@@ -89,7 +106,7 @@ class Store:
 
     def replace_lessons(self, lessons: list[Lesson]) -> None:
         self.init()
-        with self.connect() as db:
+        with self.session() as db:
             db.execute("DELETE FROM lessons")
             db.executemany(
                 """INSERT INTO lessons(signature,title,guidance,tags,evidence_count,
@@ -113,7 +130,7 @@ class Store:
 
     def lessons(self) -> list[dict]:
         self.init()
-        with self.connect() as db:
+        with self.session() as db:
             rows = db.execute(
                 "SELECT * FROM lessons ORDER BY confidence DESC, evidence_count DESC"
             ).fetchall()
@@ -121,7 +138,7 @@ class Store:
 
     def stats(self) -> dict:
         self.init()
-        with self.connect() as db:
+        with self.session() as db:
             event_count = db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
             lesson_count = db.execute("SELECT COUNT(*) FROM lessons").fetchone()[0]
             failures = db.execute("SELECT COUNT(*) FROM events WHERE kind='mistake'").fetchone()[0]
