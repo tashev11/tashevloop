@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import sys
 from pathlib import Path
 
@@ -10,12 +11,9 @@ from tashevloop.daemon import watch  # noqa: E402
 
 
 if __name__ == "__main__":
-    test_command = (
-        "python3 -c "
-        "\"__import__('sys').path.insert(0,'src') or "
-        "__import__('unittest').TextTestRunner(verbosity=1).run("
-        "__import__('unittest').defaultTestLoader.discover('tests'))\""
-    )
+    # run_tests.py tests the checkout it lives in and exits non-zero on failure,
+    # so the same command is valid here and inside autopilot worktrees.
+    test_command = f"{shlex.quote(sys.executable)} scripts/run_tests.py"
     watch(
         ROOT,
         interval=60,

@@ -103,6 +103,9 @@ def cycle(
         "autopilot": autopilot,
         "autopilot_status": None if autopilot_result is None else autopilot_result.get("status"),
     }
+    if not changed and previous.get("error"):
+        # Nothing ran since the failed cycle; keep its error visible.
+        payload["error"] = previous["error"]
     _write_status(store, payload)
     return payload
 
@@ -131,6 +134,9 @@ def watch(
                 "running": True,
                 "pid": os.getpid(),
                 "last_cycle_at": utc_now(),
+                # Remember the HEAD this cycle saw. Without it the next cycle
+                # counts as a change and repeats the failing work every interval.
+                "head": git_head(project),
                 "error": str(exc),
                 "autopilot": autopilot,
             })
