@@ -1,0 +1,2 @@
+{"kind":"mistake","title":"Release missed a runtime asset","description":"Packaged app failed only after install","tags":["release","packaging"],"source":"codex"}
+{"kind":"fix","title":"Release missed a runtime asset","description":"Validated packaged artifact before publishing","solution":"Run a packaged-artifact smoke test before creating the release.","tags":["release","packaging"],"source":"human"}

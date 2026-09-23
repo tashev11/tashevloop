@@ -1,0 +1,138 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+
+from .models import Event, Lesson, utc_now
+
+
+SCHEMA = """
+PRAGMA journal_mode=WAL;
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    solution TEXT NOT NULL DEFAULT '',
+    tags TEXT NOT NULL DEFAULT '[]',
+    source TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_events_kind ON events(kind);
+CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
+
+CREATE TABLE IF NOT EXISTS lessons (
+    signature TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    guidance TEXT NOT NULL,
+    tags TEXT NOT NULL DEFAULT '[]',
+    evidence_count INTEGER NOT NULL,
+    failure_count INTEGER NOT NULL,
+    success_count INTEGER NOT NULL,
+    confidence REAL NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+
+class Store:
+    def __init__(self, project: Path):
+        self.project = project.resolve()
+        self.home = self.project / ".tashevloop"
+        self.db_path = self.home / "memory.db"
+
+    def init(self) -> None:
+        self.home.mkdir(parents=True, exist_ok=True)
+        with self.connect() as db:
+            db.executescript(SCHEMA)
+
+    def connect(self) -> sqlite3.Connection:
+        self.home.mkdir(parents=True, exist_ok=True)
+        db = sqlite3.connect(self.db_path)
+        db.row_factory = sqlite3.Row
+        return db
+
+    def add_event(self, event: Event) -> int:
+        event.validate()
+        self.init()
+        with self.connect() as db:
+            cur = db.execute(
+                """INSERT INTO events(kind,title,description,solution,tags,source,created_at)
+                   VALUES(?,?,?,?,?,?,?)""",
+                (
+                    event.kind,
+                    event.title.strip(),
+                    event.description.strip(),
+                    event.solution.strip(),
+                    json.dumps(event.tags, ensure_ascii=False),
+                    event.source.strip() or "manual",
+                    event.created_at,
+                ),
+            )
+            return int(cur.lastrowid)
+
+    def events(self) -> list[dict]:
+        self.init()
+        with self.connect() as db:
+            rows = db.execute("SELECT * FROM events ORDER BY id ASC").fetchall()
+        return [self._event_row(r) for r in rows]
+
+    def replace_lessons(self, lessons: list[Lesson]) -> None:
+        self.init()
+        with self.connect() as db:
+            db.execute("DELETE FROM lessons")
+            db.executemany(
+                """INSERT INTO lessons(signature,title,guidance,tags,evidence_count,
+                   failure_count,success_count,confidence,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?)""",
+                [
+                    (
+                        x.signature,
+                        x.title,
+                        x.guidance,
+                        json.dumps(x.tags, ensure_ascii=False),
+                        x.evidence_count,
+                        x.failure_count,
+                        x.success_count,
+                        x.confidence,
+                        x.updated_at,
+                    )
+                    for x in lessons
+                ],
+            )
+
+    def lessons(self) -> list[dict]:
+        self.init()
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT * FROM lessons ORDER BY confidence DESC, evidence_count DESC"
+            ).fetchall()
+        return [self._lesson_row(r) for r in rows]
+
+    def stats(self) -> dict:
+        self.init()
+        with self.connect() as db:
+            event_count = db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+            lesson_count = db.execute("SELECT COUNT(*) FROM lessons").fetchone()[0]
+            failures = db.execute("SELECT COUNT(*) FROM events WHERE kind='mistake'").fetchone()[0]
+            fixes = db.execute("SELECT COUNT(*) FROM events WHERE kind='fix'").fetchone()[0]
+        return {
+            "events": event_count,
+            "lessons": lesson_count,
+            "mistakes": failures,
+            "fixes": fixes,
+            "updated_at": utc_now(),
+        }
+
+    @staticmethod
+    def _event_row(row: sqlite3.Row) -> dict:
+        item = dict(row)
+        item["tags"] = json.loads(item["tags"])
+        return item
+
+    @staticmethod
+    def _lesson_row(row: sqlite3.Row) -> dict:
+        item = dict(row)
+        item["tags"] = json.loads(item["tags"])
+        return item
