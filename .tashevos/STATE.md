@@ -14,7 +14,8 @@ Updated: 2026-09-23
 ## Next
 1. Run tests and self-demo.
 2. Fix failures.
-3. Commit initial v0.1.
-4. Publish repository to GitHub.
-5. Add automatic Git/test ingestion.
-6. Add AI adapters and MCP server.
+3. Initial v0.1 committed as 917b016.
+4. Create public GitHub repository tashev11/tashevloop (current push fails: Repository not found).
+5. Push main and verify CI.
+6. Add automatic Git/test ingestion.
+7. Add AI adapters and MCP server.
