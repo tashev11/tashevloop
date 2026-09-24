@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .models import Lesson, utc_now
 from .store import Store
-from .text import overlap_score, signature
+from .text import overlap_score, signature, strip_trailers
 
 
 def learn(project: Path) -> list[Lesson]:
@@ -28,15 +28,17 @@ def learn(project: Path) -> list[Lesson]:
         evidence = len(items)
         failure_count = len(failures)
         success_count = len(successes)
-        solved = [x for x in items if x["solution"].strip()]
+        # Stored evidence stays raw; trailers are dropped only from the derived
+        # guidance, which also cleans stores imported before trailers were stripped.
+        solved = [x for x in items if strip_trailers(x["solution"])]
         best = solved[-1] if solved else (successes[-1] if successes else items[-1])
 
-        guidance = best["solution"].strip()
+        guidance = strip_trailers(best["solution"])
         if not guidance:
-            if best["kind"] == "success":
-                guidance = best["description"].strip() or f"Repeat the successful approach: {best['title']}"
+            if best["kind"] in {"success", "fix"}:
+                guidance = strip_trailers(best["description"]) or f"Repeat the successful approach: {best['title']}"
             elif best["kind"] == "decision":
-                guidance = best["description"].strip() or best["title"]
+                guidance = strip_trailers(best["description"]) or best["title"]
             else:
                 guidance = f"Avoid repeating this pattern until a verified fix is recorded: {best['title']}"
 

@@ -71,6 +71,31 @@ class CaptureTests(unittest.TestCase):
             self.assertEqual(first["imported"], 1)
             self.assertEqual(second["skipped"], 1)
 
+    def test_git_ingestion_drops_commit_trailers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            subprocess.run(["git", "init", "-b", "main"], cwd=project, check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=project, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=project, check=True)
+            messages = [
+                "fix login crash\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
+                (
+                    "add retry budget\n\nRetries stop after three attempts.\n\n"
+                    "Signed-off-by: Dev <dev@example.com>\n🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+                ),
+            ]
+            for i, message in enumerate(messages):
+                (project / f"file{i}.txt").write_text(f"{i}\n", encoding="utf-8")
+                subprocess.run(["git", "add", "."], cwd=project, check=True)
+                subprocess.run(["git", "commit", "-m", message], cwd=project, check=True, capture_output=True)
+
+            ingest_git(project)
+            events = {e["title"]: e for e in Store(project).events()}
+            crash = events["fix login crash"]
+            self.assertEqual(crash["description"], "")
+            self.assertTrue(crash["solution"].startswith("Preserve the verified fix represented by commit"))
+            self.assertEqual(events["add retry budget"]["solution"], "Retries stop after three attempts.")
+
 
 if __name__ == "__main__":
     unittest.main()

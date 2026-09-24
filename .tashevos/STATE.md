@@ -8,7 +8,7 @@ Updated: 2026-09-24
 - Local-first SQLite evidence store; `init` writes `.tashevloop/.gitignore` so the store never enters Git history.
 - Deterministic lesson builder with confidence/evidence metadata.
 - Task-relevant context generation.
-- Automatic Git commit ingestion; commits are classified by whole words.
+- Automatic Git commit ingestion; commits are classified by whole words, and commit trailers (Co-Authored-By, Signed-off-by, tool footers) never become lesson guidance.
 - Test pass/fail capture.
 - JSONL evidence import with deduplication.
 - Adaptive recommendation ranking based on observed project-area reliability.
@@ -24,7 +24,7 @@ Updated: 2026-09-24
   - verification runs in the worktree; the checkout is only fast-forwarded to a verified merge commit while it is clean and main has not moved, otherwise the verified branch is kept;
   - timeouts and runner failures count as attempts; the same proposal is not retried until its evidence count increases;
   - per-attempt budget cap.
-- Local test suite: 25 tests passing.
+- Local test suite: 28 tests passing.
 - Version 0.2.1.
 - GitHub Actions is manual-only for now.
 

@@ -8,6 +8,20 @@ STOP = {
 }
 
 
+# Commit trailers and tool footers carry attribution, not guidance.
+TRAILER_LINE = re.compile(
+    r"^\s*(?:(?:co-authored|signed-off|reviewed|acked|tested|reported|suggested|helped)-by"
+    r"|change-id)\s*:.*$"
+    r"|^\s*🤖 generated with .*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def strip_trailers(text: str) -> str:
+    """Remove commit trailers such as Co-Authored-By: and tool footers."""
+    return TRAILER_LINE.sub("", text).strip()
+
+
 def tokens(text: str) -> list[str]:
     words = re.findall(r"[a-zA-Zа-яА-ЯёЁ0-9_\-]{2,}", text.lower())
     return [w for w in words if w not in STOP]

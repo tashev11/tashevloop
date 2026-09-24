@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .models import Event
 from .store import Store
+from .text import strip_trailers
 
 
 # Whole words only: "debug", "prefix" and "fixtures" are not fixes, and
@@ -59,7 +60,7 @@ def ingest_git(project: Path, limit: int = 50) -> dict:
             continue
         sha = parts[0].strip()
         subject = parts[1].strip()
-        body = parts[2].strip() if len(parts) > 2 else ""
+        body = strip_trailers(parts[2]) if len(parts) > 2 else ""
         source = f"git:{sha}"
         if store.has_source(source):
             skipped += 1
